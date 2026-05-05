@@ -11,6 +11,13 @@ import { Loader2 } from 'lucide-react'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
 
+// Represents one response record to be flushed at the end
+interface PendingResponse {
+  promptId: string
+  variantId: string | null
+  scores: Record<string, any>
+}
+
 export function SurveyLayout({ 
   project, 
   questionnaireId, 
@@ -24,11 +31,14 @@ export function SurveyLayout({
   const [sessionId, setSessionId] = useState('')
   const [currentPromptIndex, setCurrentPromptIndex] = useState(0)
   
-  // Track which variants have been fully played
+  // Track which variants have been played (at least once)
   const [playedVariants, setPlayedVariants] = useState<Record<string, boolean>>({})
   
-  // Track scores: { variantId: { criteria: score } } or { promptId: { choice: "Option" } }
+  // Track scores: { variantId | promptId: { criteria: score } | { choice: value } }
   const [scores, setScores] = useState<Record<string, Record<string, any>>>({})
+
+  // Buffer of all responses accumulated during the survey — only submitted at the very end
+  const [pendingResponses, setPendingResponses] = useState<PendingResponse[]>([])
   
   const [submitting, setSubmitting] = useState(false)
 
@@ -43,53 +53,60 @@ export function SurveyLayout({
   const currentPrompt = prompts[currentPromptIndex]
   const criteriaList = project.criteria_settings || []
   const blockType = currentPrompt.type || 'audio'
+  const isLastPrompt = currentPromptIndex === prompts.length - 1
 
-  // Check if current prompt is complete based on its type
+  // ── Completion check for the current prompt ──────────────────────────────────
   let isCurrentPromptComplete = false
-
   if (blockType === 'text') {
     isCurrentPromptComplete = true
   } else if (blockType === 'single_choice') {
     isCurrentPromptComplete = !!scores[currentPrompt.id]?.choice
   } else {
-    // audio block
-    isCurrentPromptComplete = currentPrompt.audio_variants?.every((variant: any) => {
-      const hasPlayed = playedVariants[variant.id]
-      const hasAllScores = criteriaList.every((crit: string) => scores[variant.id]?.[crit])
-      return hasPlayed && hasAllScores
-    })
+    isCurrentPromptComplete = (currentPrompt.audio_variants?.length ?? 0) > 0 &&
+      currentPrompt.audio_variants?.every((variant: any) => {
+        const hasPlayed = playedVariants[variant.id]
+        const hasAllScores = criteriaList.every((crit: string) => scores[variant.id]?.[crit])
+        return hasPlayed && hasAllScores
+      })
   }
 
+  // ── Build the response record(s) for the current prompt ──────────────────────
+  function buildResponsesForCurrentPrompt(): PendingResponse[] {
+    if (blockType === 'text') {
+      return [{ promptId: currentPrompt.id, variantId: null, scores: { type: 'text' } }]
+    }
+    if (blockType === 'single_choice') {
+      return [{ promptId: currentPrompt.id, variantId: null, scores: { choice: scores[currentPrompt.id]?.choice } }]
+    }
+    // audio
+    return (currentPrompt.audio_variants || []).map((variant: any) => ({
+      promptId: currentPrompt.id,
+      variantId: variant.id,
+      scores: scores[variant.id],
+    }))
+  }
+
+  // ── Handle Next / Submit ─────────────────────────────────────────────────────
   const handleNext = async () => {
     if (!isCurrentPromptComplete) return
 
+    const newResponses = [...pendingResponses, ...buildResponsesForCurrentPrompt()]
+    setPendingResponses(newResponses)
+
+    if (!isLastPrompt) {
+      // Just advance — nothing written to DB yet
+      setCurrentPromptIndex(currentPromptIndex + 1)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+
+    // ── Final submit: flush everything at once ───────────────────────────────
     setSubmitting(true)
     try {
-      if (blockType === 'text') {
-        await submitResponse(sessionId, questionnaireId, currentPrompt.id, null, { type: 'text' })
-      } else if (blockType === 'single_choice') {
-        await submitResponse(sessionId, questionnaireId, currentPrompt.id, null, { choice: scores[currentPrompt.id]?.choice })
-      } else {
-        // Submit responses for audio variants
-        if (currentPrompt.audio_variants) {
-          for (const variant of currentPrompt.audio_variants) {
-            await submitResponse(
-              sessionId,
-              questionnaireId,
-              currentPrompt.id,
-              variant.id,
-              scores[variant.id]
-            )
-          }
-        }
+      for (const r of newResponses) {
+        await submitResponse(sessionId, questionnaireId, r.promptId, r.variantId, r.scores)
       }
-
-      if (currentPromptIndex < prompts.length - 1) {
-        setCurrentPromptIndex(currentPromptIndex + 1)
-        window.scrollTo({ top: 0, behavior: 'smooth' })
-      } else {
-        router.push('/survey/complete')
-      }
+      router.push('/survey/complete')
     } catch (err) {
       alert('Error submitting responses. Please try again.')
     } finally {
@@ -108,7 +125,7 @@ export function SurveyLayout({
             <div className="w-full max-w-md bg-gray-200 rounded-full h-2.5">
               <div 
                 className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
-                style={{ width: `${((currentPromptIndex) / prompts.length) * 100}%` }}
+                style={{ width: `${(currentPromptIndex / prompts.length) * 100}%` }}
               ></div>
             </div>
             <span className="text-sm font-medium text-gray-500 whitespace-nowrap">
@@ -210,10 +227,10 @@ export function SurveyLayout({
           >
             {submitting ? (
               <Loader2 className="w-5 h-5 animate-spin" />
-            ) : currentPromptIndex < prompts.length - 1 ? (
-              'Next'
-            ) : (
+            ) : isLastPrompt ? (
               'Submit Survey'
+            ) : (
+              'Next'
             )}
           </Button>
         </div>
