@@ -22,7 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
-import { PlusCircle, Trash2, Edit2, Check, GripVertical } from 'lucide-react'
+import { PlusCircle, Trash2, Edit2, Check, GripVertical, ChevronDown, ChevronRight } from 'lucide-react'
 import {
   createQuestionnaire,
   createPrompt,
@@ -155,6 +155,16 @@ export function QuestionnaireBuilder({
   const [newBlockOptions, setNewBlockOptions] = useState<Record<string, string>>({})
   const [editingPrompt, setEditingPrompt] = useState<{ id: string; text: string } | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  const [collapsedQuestionnaires, setCollapsedQuestionnaires] = useState<Set<string>>(new Set())
+
+  const toggleCollapse = (qId: string) => {
+    setCollapsedQuestionnaires(prev => {
+      const next = new Set(prev)
+      if (next.has(qId)) next.delete(qId)
+      else next.add(qId)
+      return next
+    })
+  }
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -313,11 +323,27 @@ export function QuestionnaireBuilder({
             const promptIds = (q.prompts || []).map((p: any) => p.id)
             return (
               <Card key={q.id} className="bg-gray-50/50">
-                <CardHeader className="py-4 border-b flex flex-row items-center justify-between">
-                  <CardTitle className="text-lg">{q.title}</CardTitle>
+                <CardHeader className="py-4 border-b flex flex-row items-center justify-between gap-2">
+                  {/* Clickable area: chevron + title + count */}
+                  <button
+                    type="button"
+                    onClick={() => toggleCollapse(q.id)}
+                    className="flex-1 flex items-center gap-2 text-left min-w-0"
+                  >
+                    {collapsedQuestionnaires.has(q.id)
+                      ? <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                      : <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                    }
+                    <CardTitle className="text-lg truncate">{q.title}</CardTitle>
+                    {collapsedQuestionnaires.has(q.id) && (
+                      <span className="text-xs text-gray-400 font-normal flex-shrink-0">
+                        {(q.prompts || []).length} block{(q.prompts || []).length !== 1 ? 's' : ''}
+                      </span>
+                    )}
+                  </button>
                   <ConfirmDialog
                     trigger={
-                      <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700">
+                      <Button variant="ghost" size="sm" className="text-red-500 hover:text-red-700 flex-shrink-0">
                         <Trash2 className="w-4 h-4" />
                       </Button>
                     }
@@ -327,80 +353,82 @@ export function QuestionnaireBuilder({
                     onConfirm={() => handleDeleteQuestionnaire(q.id)}
                   />
                 </CardHeader>
-                <CardContent className="pt-4 space-y-4">
-                  {/* Sortable block list */}
-                  <DndContext
-                    id={`dnd-${q.id}`}
-                    sensors={sensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={(event) => handleDragEnd(event, q.id)}
-                  >
-                    <SortableContext items={promptIds} strategy={verticalListSortingStrategy}>
-                      <div className="space-y-3">
-                        {(q.prompts || []).map((prompt: any) => (
-                          <SortableBlock
-                            key={prompt.id}
-                            prompt={prompt}
-                            qId={q.id}
-                            projectId={project.id}
-                            editingPrompt={editingPrompt}
-                            onEditStart={setEditingPrompt}
-                            onEditSave={handleUpdatePrompt}
-                            onEditChange={(text) =>
-                              setEditingPrompt((prev) => (prev ? { ...prev, text } : null))
-                            }
-                            onDelete={handleDeletePrompt}
-                          />
-                        ))}
-                      </div>
-                    </SortableContext>
-                  </DndContext>
+                {!collapsedQuestionnaires.has(q.id) && (
+                  <CardContent className="pt-4 space-y-4">
+                    {/* Sortable block list */}
+                    <DndContext
+                      id={`dnd-${q.id}`}
+                      sensors={sensors}
+                      collisionDetection={closestCenter}
+                      onDragEnd={(event) => handleDragEnd(event, q.id)}
+                    >
+                      <SortableContext items={promptIds} strategy={verticalListSortingStrategy}>
+                        <div className="space-y-3">
+                          {(q.prompts || []).map((prompt: any) => (
+                            <SortableBlock
+                              key={prompt.id}
+                              prompt={prompt}
+                              qId={q.id}
+                              projectId={project.id}
+                              editingPrompt={editingPrompt}
+                              onEditStart={setEditingPrompt}
+                              onEditSave={handleUpdatePrompt}
+                              onEditChange={(text) =>
+                                setEditingPrompt((prev) => (prev ? { ...prev, text } : null))
+                              }
+                              onDelete={handleDeletePrompt}
+                            />
+                          ))}
+                        </div>
+                      </SortableContext>
+                    </DndContext>
 
-                  {/* Add block form */}
-                  <form
-                    onSubmit={(e) => handleCreateBlock(q.id, e)}
-                    className="space-y-3 p-4 bg-gray-100/50 rounded-lg border border-dashed"
-                  >
-                    <div className="flex flex-col sm:flex-row items-start gap-2">
-                      <select
-                        className="border rounded-md px-3 py-2 text-sm bg-white mt-1 flex-shrink-0"
-                        value={newBlockTypes[q.id] || 'audio'}
-                        onChange={(e) =>
-                          setNewBlockTypes({ ...newBlockTypes, [q.id]: e.target.value })
-                        }
-                      >
-                        <option value="audio">Audio Block</option>
-                        <option value="text">Text Block</option>
-                        <option value="single_choice">Single Choice Block</option>
-                      </select>
-                      <Textarea
-                        value={newBlockTexts[q.id] || ''}
-                        onChange={(e) =>
-                          setNewBlockTexts({ ...newBlockTexts, [q.id]: e.target.value })
-                        }
-                        placeholder={
-                          newBlockTypes[q.id] === 'text'
-                            ? 'Enter the text content to display…'
-                            : 'Enter the prompt / question…'
-                        }
-                        className="flex-1 bg-white min-h-[60px]"
-                      />
-                      <Button type="submit" variant="secondary" className="mt-1 flex-shrink-0">
-                        Add Block
-                      </Button>
-                    </div>
-                    {newBlockTypes[q.id] === 'single_choice' && (
-                      <Textarea
-                        value={newBlockOptions[q.id] || ''}
-                        onChange={(e) =>
-                          setNewBlockOptions({ ...newBlockOptions, [q.id]: e.target.value })
-                        }
-                        placeholder={'Enter options, one per line:\nYes\nNo\nMaybe'}
-                        className="bg-white min-h-[80px]"
-                      />
-                    )}
-                  </form>
-                </CardContent>
+                    {/* Add block form */}
+                    <form
+                      onSubmit={(e) => handleCreateBlock(q.id, e)}
+                      className="space-y-3 p-4 bg-gray-100/50 rounded-lg border border-dashed"
+                    >
+                      <div className="flex flex-col sm:flex-row items-start gap-2">
+                        <select
+                          className="border rounded-md px-3 py-2 text-sm bg-white mt-1 flex-shrink-0"
+                          value={newBlockTypes[q.id] || 'audio'}
+                          onChange={(e) =>
+                            setNewBlockTypes({ ...newBlockTypes, [q.id]: e.target.value })
+                          }
+                        >
+                          <option value="audio">Audio Block</option>
+                          <option value="text">Text Block</option>
+                          <option value="single_choice">Single Choice Block</option>
+                        </select>
+                        <Textarea
+                          value={newBlockTexts[q.id] || ''}
+                          onChange={(e) =>
+                            setNewBlockTexts({ ...newBlockTexts, [q.id]: e.target.value })
+                          }
+                          placeholder={
+                            newBlockTypes[q.id] === 'text'
+                              ? 'Enter the text content to display…'
+                              : 'Enter the prompt / question…'
+                          }
+                          className="flex-1 bg-white min-h-[60px]"
+                        />
+                        <Button type="submit" variant="secondary" className="mt-1 flex-shrink-0">
+                          Add Block
+                        </Button>
+                      </div>
+                      {newBlockTypes[q.id] === 'single_choice' && (
+                        <Textarea
+                          value={newBlockOptions[q.id] || ''}
+                          onChange={(e) =>
+                            setNewBlockOptions({ ...newBlockOptions, [q.id]: e.target.value })
+                          }
+                          placeholder={'Enter options, one per line:\nYes\nNo\nMaybe'}
+                          className="bg-white min-h-[80px]"
+                        />
+                      )}
+                    </form>
+                  </CardContent>
+                )}
               </Card>
             )
           })}
