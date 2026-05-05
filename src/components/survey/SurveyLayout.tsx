@@ -1,0 +1,224 @@
+'use client'
+
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { submitResponse } from '@/actions/survey'
+import { CustomAudioPlayer } from './CustomAudioPlayer'
+import { RatingScale } from './RatingScale'
+import { Button } from '@/components/ui/button'
+import { Card, CardContent } from '@/components/ui/card'
+import { Loader2 } from 'lucide-react'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Label } from '@/components/ui/label'
+
+export function SurveyLayout({ 
+  project, 
+  questionnaireId, 
+  prompts 
+}: { 
+  project: any, 
+  questionnaireId: string, 
+  prompts: any[] 
+}) {
+  const router = useRouter()
+  const [sessionId, setSessionId] = useState('')
+  const [currentPromptIndex, setCurrentPromptIndex] = useState(0)
+  
+  // Track which variants have been fully played
+  const [playedVariants, setPlayedVariants] = useState<Record<string, boolean>>({})
+  
+  // Track scores: { variantId: { criteria: score } } or { promptId: { choice: "Option" } }
+  const [scores, setScores] = useState<Record<string, Record<string, any>>>({})
+  
+  const [submitting, setSubmitting] = useState(false)
+
+  useEffect(() => {
+    setSessionId(Math.random().toString(36).substring(2, 15))
+  }, [])
+
+  if (!prompts || prompts.length === 0) {
+    return <div className="text-center p-8">No prompts available for this survey.</div>
+  }
+
+  const currentPrompt = prompts[currentPromptIndex]
+  const criteriaList = project.criteria_settings || []
+  const blockType = currentPrompt.type || 'audio'
+
+  // Check if current prompt is complete based on its type
+  let isCurrentPromptComplete = false
+
+  if (blockType === 'text') {
+    isCurrentPromptComplete = true
+  } else if (blockType === 'single_choice') {
+    isCurrentPromptComplete = !!scores[currentPrompt.id]?.choice
+  } else {
+    // audio block
+    isCurrentPromptComplete = currentPrompt.audio_variants?.every((variant: any) => {
+      const hasPlayed = playedVariants[variant.id]
+      const hasAllScores = criteriaList.every((crit: string) => scores[variant.id]?.[crit])
+      return hasPlayed && hasAllScores
+    })
+  }
+
+  const handleNext = async () => {
+    if (!isCurrentPromptComplete) return
+
+    setSubmitting(true)
+    try {
+      if (blockType === 'text') {
+        await submitResponse(sessionId, questionnaireId, currentPrompt.id, null, { type: 'text' })
+      } else if (blockType === 'single_choice') {
+        await submitResponse(sessionId, questionnaireId, currentPrompt.id, null, { choice: scores[currentPrompt.id]?.choice })
+      } else {
+        // Submit responses for audio variants
+        if (currentPrompt.audio_variants) {
+          for (const variant of currentPrompt.audio_variants) {
+            await submitResponse(
+              sessionId,
+              questionnaireId,
+              currentPrompt.id,
+              variant.id,
+              scores[variant.id]
+            )
+          }
+        }
+      }
+
+      if (currentPromptIndex < prompts.length - 1) {
+        setCurrentPromptIndex(currentPromptIndex + 1)
+        window.scrollTo({ top: 0, behavior: 'smooth' })
+      } else {
+        router.push('/survey/complete')
+      }
+    } catch (err) {
+      alert('Error submitting responses. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-3xl mx-auto space-y-8">
+        
+        {/* Header */}
+        <div className="text-center space-y-4">
+          <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">{project.title}</h1>
+          <div className="flex items-center justify-center gap-2">
+            <div className="w-full max-w-md bg-gray-200 rounded-full h-2.5">
+              <div 
+                className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
+                style={{ width: `${((currentPromptIndex) / prompts.length) * 100}%` }}
+              ></div>
+            </div>
+            <span className="text-sm font-medium text-gray-500 whitespace-nowrap">
+              {currentPromptIndex + 1} / {prompts.length}
+            </span>
+          </div>
+        </div>
+
+        {/* Prompt Context / Block Content */}
+        <Card className="border-t-4 border-t-blue-600 shadow-md">
+          <CardContent className="p-6 sm:p-8">
+            <h2 className="text-sm font-semibold text-blue-600 uppercase tracking-wider mb-2">
+              {blockType === 'audio' ? 'Prompt Context' : blockType === 'single_choice' ? 'Question' : 'Information'}
+            </h2>
+            <p className="text-xl sm:text-2xl text-gray-900 font-medium leading-relaxed whitespace-pre-wrap">
+              {currentPrompt.text}
+            </p>
+          </CardContent>
+        </Card>
+
+        {/* Single Choice Block UI */}
+        {blockType === 'single_choice' && currentPrompt.options && (
+          <Card className="shadow-sm">
+            <CardContent className="p-6">
+              <RadioGroup 
+                value={scores[currentPrompt.id]?.choice || ""}
+                onValueChange={(val) => setScores(prev => ({
+                  ...prev,
+                  [currentPrompt.id]: { choice: val }
+                }))}
+                className="flex flex-col space-y-3"
+              >
+                {currentPrompt.options.map((option: string) => (
+                  <div key={option} className="flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-50 border border-transparent transition-colors has-[:checked]:border-blue-200 has-[:checked]:bg-blue-50">
+                    <RadioGroupItem value={option} id={`option-${option}`} />
+                    <Label htmlFor={`option-${option}`} className="flex-1 cursor-pointer text-base">
+                      {option}
+                    </Label>
+                  </div>
+                ))}
+              </RadioGroup>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Audio Block UI */}
+        {blockType === 'audio' && (
+          <div className="space-y-8">
+            {currentPrompt.audio_variants?.map((variant: any, idx: number) => {
+              const letter = String.fromCharCode(65 + idx) // A, B, C...
+              
+              return (
+                <Card key={variant.id} className="overflow-hidden shadow-sm hover:shadow transition-shadow">
+                  <div className="bg-white border-b px-6 py-4 flex items-center justify-between">
+                    <h3 className="text-lg font-bold text-gray-800">Sample {letter}</h3>
+                    {playedVariants[variant.id] && (
+                      <span className="text-xs font-semibold bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                        Listened
+                      </span>
+                    )}
+                  </div>
+                  
+                  <CardContent className="p-6 space-y-6">
+                    <CustomAudioPlayer 
+                      src={variant.file_url} 
+                      onPlayComplete={() => setPlayedVariants(prev => ({ ...prev, [variant.id]: true }))} 
+                    />
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {criteriaList.map((criteria: string) => (
+                        <RatingScale 
+                          key={criteria}
+                          criteria={criteria}
+                          value={scores[variant.id]?.[criteria]}
+                          onChange={(val) => setScores(prev => ({
+                            ...prev,
+                            [variant.id]: {
+                              ...(prev[variant.id] || {}),
+                              [criteria]: val
+                            }
+                          }))}
+                        />
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        )}
+
+        {/* Footer Actions */}
+        <div className="flex justify-end pt-4 pb-12">
+          <Button 
+            size="lg" 
+            onClick={handleNext} 
+            disabled={!isCurrentPromptComplete || submitting}
+            className="w-full sm:w-auto px-8 py-6 text-lg"
+          >
+            {submitting ? (
+              <Loader2 className="w-5 h-5 animate-spin" />
+            ) : currentPromptIndex < prompts.length - 1 ? (
+              'Next'
+            ) : (
+              'Submit Survey'
+            )}
+          </Button>
+        </div>
+
+      </div>
+    </div>
+  )
+}
