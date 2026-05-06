@@ -55,6 +55,15 @@ export function SurveyLayout({
   const blockType = currentPrompt.type || 'audio'
   const isLastPrompt = currentPromptIndex === prompts.length - 1
 
+  // ── Audio-only progress ──────────────────────────────────────────────────────
+  const isAudioBlock = (p: any) => !p.type || p.type === 'audio'
+  const totalAudio = prompts.filter(isAudioBlock).length
+  // How many audio prompts sit before the current index
+  const audioCompleted = prompts.slice(0, currentPromptIndex).filter(isAudioBlock).length
+  // If the current prompt is audio it counts as "in progress" (show its number)
+  const audioCurrentLabel = isAudioBlock(currentPrompt) ? audioCompleted + 1 : audioCompleted
+  const audioProgressPct = totalAudio > 0 ? (audioCompleted / totalAudio) * 100 : 0
+
   // ── Completion check for the current prompt ──────────────────────────────────
   let isCurrentPromptComplete = false
   if (blockType === 'text') {
@@ -121,17 +130,19 @@ export function SurveyLayout({
         {/* Header */}
         <div className="text-center space-y-4">
           <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">{project.title}</h1>
-          <div className="flex items-center justify-center gap-2">
-            <div className="w-full max-w-md bg-gray-200 rounded-full h-2.5">
-              <div 
-                className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
-                style={{ width: `${(currentPromptIndex / prompts.length) * 100}%` }}
-              ></div>
+          {totalAudio > 0 && (
+            <div className="flex items-center justify-center gap-2">
+              <div className="w-full max-w-md bg-gray-200 rounded-full h-2.5">
+                <div 
+                  className="bg-blue-600 h-2.5 rounded-full transition-all duration-300" 
+                  style={{ width: `${audioProgressPct}%` }}
+                ></div>
+              </div>
+              <span className="text-sm font-medium text-gray-500 whitespace-nowrap">
+                {isAudioBlock(currentPrompt) ? `${audioCurrentLabel} / ${totalAudio}` : `${audioCompleted} / ${totalAudio} audio done`}
+              </span>
             </div>
-            <span className="text-sm font-medium text-gray-500 whitespace-nowrap">
-              {currentPromptIndex + 1} / {prompts.length}
-            </span>
-          </div>
+          )}
         </div>
 
         {/* Prompt Context / Block Content */}
