@@ -12,13 +12,35 @@ export function RatingScale({
   value: number | undefined, 
   onChange: (val: number) => void 
 }) {
+  const getDescription = (crit: string) => {
+    switch (crit.toLowerCase()) {
+      case 'audio fidelity':
+        return 'Evaluates the audio quality, signal clarity, and the absence of perceptible digital artifacts or distortion.'
+      case 'prompt adherence':
+        return 'Assesses how accurately the generated musical elements, such as instrumentation, genre, and mood/theme correspond to the attributes requested in the text prompt.'
+      case 'musicality':
+        return 'Measures intrinsic musical quality, including rhythmic stability, harmonic coherence, structural development, and general listenability.'
+      case 'overall':
+        return 'Captures the holistic impression of the generated music by integrating production quality, prompt relevance, and musical appeal into a single overall judgment.'
+      default:
+        return null
+    }
+  }
+
+  const description = getDescription(criteria)
+
   return (
     <div className="flex flex-col space-y-3 p-4 bg-gray-50 rounded-lg border border-gray-100">
-      <div className="flex justify-between items-center">
-        <Label className="text-base font-medium text-gray-800">{criteria}</Label>
-        <span className="text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">
-          {value ? value : '-'} / 5
-        </span>
+      <div className="flex flex-col space-y-1">
+        <div className="flex justify-between items-center">
+          <Label className="text-base font-medium text-gray-800">{criteria}</Label>
+          <span className="text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">
+            {value ? value : '-'} / 5
+          </span>
+        </div>
+        {description && (
+          <p className="text-xs text-gray-500 leading-relaxed">{description}</p>
+        )}
       </div>
       
       <RadioGroup 
