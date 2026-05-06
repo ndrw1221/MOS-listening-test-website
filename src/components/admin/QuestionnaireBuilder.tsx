@@ -22,6 +22,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
+import { Label } from '@/components/ui/label'
 import { PlusCircle, Trash2, Edit2, Check, GripVertical, ChevronDown, ChevronRight } from 'lucide-react'
 import {
   createQuestionnaire,
@@ -48,8 +49,8 @@ function SortableBlock({
   prompt: any
   qId: string
   projectId: string
-  editingPrompt: { id: string; text: string } | null
-  onEditStart: (p: { id: string; text: string }) => void
+  editingPrompt: { id: string; text: string; options?: string[] | null } | null
+  onEditStart: (p: { id: string; text: string; options?: string[] | null }) => void
   onEditSave: (qId: string, promptId: string) => void
   onEditChange: (text: string) => void
   onDelete: (qId: string, promptId: string) => void
@@ -82,7 +83,7 @@ function SortableBlock({
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => onEditStart({ id: prompt.id, text: prompt.text })}
+          onClick={() => onEditStart({ id: prompt.id, text: prompt.text, options: prompt.options })}
         >
           <Edit2 className="w-4 h-4" />
         </Button>
@@ -101,16 +102,36 @@ function SortableBlock({
 
       {/* Editable title */}
       {editingPrompt?.id === prompt.id ? (
-        <div className="flex gap-2 pr-24">
-          <Textarea
-            value={editingPrompt?.text || ''}
-            onChange={(e) => onEditChange(e.target.value)}
-            className="flex-1 min-h-[60px]"
-          />
-          <Button size="sm" className="mt-1" onClick={() => onEditSave(qId, prompt.id)}>
-            <Check className="w-4 h-4" />
-          </Button>
-        </div>
+        <>
+          <div className="flex gap-2 pr-24">
+            <Textarea
+              value={editingPrompt?.text || ''}
+              onChange={(e) => onEditChange(e.target.value)}
+              className="flex-1 min-h-[60px]"
+            />
+            <Button size="sm" className="mt-1" onClick={() => onEditSave(qId, prompt.id)}>
+              <Check className="w-4 h-4" />
+            </Button>
+          </div>
+          {/* Required toggle for short_answer during edit */}
+          {prompt.type === 'short_answer' && (
+            <div className="flex items-center space-x-2 pl-1">
+              <input
+                type="checkbox"
+                id={`edit-required-${prompt.id}`}
+                checked={editingPrompt?.options?.[0] !== 'optional'}
+                onChange={(e) => {
+                  const newOptions = [e.target.checked ? 'required' : 'optional']
+                  onEditStart({ id: prompt.id, text: editingPrompt?.text || prompt.text, options: newOptions })
+                }}
+                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <Label htmlFor={`edit-required-${prompt.id}`} className="text-sm text-gray-700 font-normal cursor-pointer">
+                Required response
+              </Label>
+            </div>
+          )}
+        </>
       ) : (
         <h4 className="font-medium text-gray-900 pr-24 flex items-center gap-2">
           <span className="text-xs bg-gray-200 text-gray-700 px-2 py-0.5 rounded uppercase tracking-wider flex-shrink-0">
@@ -153,7 +174,7 @@ export function QuestionnaireBuilder({
   const [newBlockTexts, setNewBlockTexts] = useState<Record<string, string>>({})
   const [newBlockTypes, setNewBlockTypes] = useState<Record<string, string>>({})
   const [newBlockOptions, setNewBlockOptions] = useState<Record<string, string>>({})
-  const [editingPrompt, setEditingPrompt] = useState<{ id: string; text: string } | null>(null)
+  const [editingPrompt, setEditingPrompt] = useState<{ id: string; text: string; options?: string[] | null } | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [collapsedQuestionnaires, setCollapsedQuestionnaires] = useState<Set<string>>(new Set())
 
@@ -206,6 +227,8 @@ export function QuestionnaireBuilder({
           setErrorMsg('Please provide options for single choice (one per line)')
           return
         }
+      } else if (type === 'short_answer') {
+        options = [newBlockOptions[qId] || 'required']
       }
 
       // Determine order_index = current prompts count
@@ -254,14 +277,18 @@ export function QuestionnaireBuilder({
   async function handleUpdatePrompt(qId: string, promptId: string) {
     if (!editingPrompt) return
     try {
-      await updatePrompt(promptId, { text: editingPrompt.text }, project.id)
+      const updates: any = { text: editingPrompt.text }
+      if (editingPrompt.options !== undefined) updates.options = editingPrompt.options
+      await updatePrompt(promptId, updates, project.id)
       setQuestionnaires(
         questionnaires.map((q) => {
           if (q.id === qId) {
             return {
               ...q,
               prompts: (q.prompts || []).map((p: any) =>
-                p.id === promptId ? { ...p, text: editingPrompt.text } : p
+                p.id === promptId
+                  ? { ...p, text: editingPrompt.text, ...(editingPrompt.options !== undefined ? { options: editingPrompt.options } : {}) }
+                  : p
               ),
             }
           }
@@ -399,6 +426,7 @@ export function QuestionnaireBuilder({
                           <option value="audio">Audio Block</option>
                           <option value="text">Text Block</option>
                           <option value="single_choice">Single Choice Block</option>
+                          <option value="short_answer">Short Answer Block</option>
                         </select>
                         <Textarea
                           value={newBlockTexts[q.id] || ''}
@@ -425,6 +453,20 @@ export function QuestionnaireBuilder({
                           placeholder={'Enter options, one per line:\nYes\nNo\nMaybe'}
                           className="bg-white min-h-[80px]"
                         />
+                      )}
+                      {newBlockTypes[q.id] === 'short_answer' && (
+                        <div className="flex items-center space-x-2 pt-1 pl-1">
+                          <input 
+                            type="checkbox" 
+                            id={`required-${q.id}`} 
+                            checked={newBlockOptions[q.id] !== 'optional'}
+                            onChange={(e) => setNewBlockOptions({ ...newBlockOptions, [q.id]: e.target.checked ? 'required' : 'optional' })}
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <Label htmlFor={`required-${q.id}`} className="text-sm text-gray-700 font-normal cursor-pointer">
+                            Required response
+                          </Label>
+                        </div>
                       )}
                     </form>
                   </CardContent>

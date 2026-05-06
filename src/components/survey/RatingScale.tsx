@@ -2,6 +2,8 @@
 
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Info } from 'lucide-react'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 
 export function RatingScale({ 
   criteria, 
@@ -31,16 +33,25 @@ export function RatingScale({
 
   return (
     <div className="flex flex-col space-y-3 p-4 bg-gray-50 rounded-lg border border-gray-100">
-      <div className="flex flex-col space-y-1">
-        <div className="flex justify-between items-center">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-2">
           <Label className="text-base font-medium text-gray-800">{criteria}</Label>
-          <span className="text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">
-            {value ? value : '-'} / 5
-          </span>
+          {description && (
+            <TooltipProvider delayDuration={0}>
+              <Tooltip>
+                <TooltipTrigger type="button" className="cursor-help text-gray-400 hover:text-gray-600 transition-colors">
+                  <Info className="w-4 h-4" />
+                </TooltipTrigger>
+                <TooltipContent className="max-w-[300px] text-sm">
+                  <p>{description}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
         </div>
-        {description && (
-          <p className="text-xs text-gray-500 leading-relaxed">{description}</p>
-        )}
+        <span className="text-sm font-semibold text-blue-600 bg-blue-50 px-2 py-1 rounded">
+          {value ? value : '-'} / 5
+        </span>
       </div>
       
       <RadioGroup 

@@ -10,6 +10,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Loader2 } from 'lucide-react'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 
 // Represents one response record to be flushed at the end
 interface PendingResponse {
@@ -74,6 +75,10 @@ export function SurveyLayout({
     isCurrentPromptComplete = true
   } else if (blockType === 'single_choice') {
     isCurrentPromptComplete = !!scores[currentPrompt.id]?.choice
+  } else if (blockType === 'short_answer') {
+    const text = scores[currentPrompt.id]?.text || ''
+    const isOptional = currentPrompt.options && currentPrompt.options[0] === 'optional'
+    isCurrentPromptComplete = isOptional ? true : text.trim().length > 0
   } else {
     isCurrentPromptComplete = (currentPrompt.audio_variants?.length ?? 0) > 0 &&
       currentPrompt.audio_variants?.every((variant: any) => {
@@ -90,6 +95,9 @@ export function SurveyLayout({
     }
     if (blockType === 'single_choice') {
       return [{ promptId: currentPrompt.id, variantId: null, scores: { choice: scores[currentPrompt.id]?.choice } }]
+    }
+    if (blockType === 'short_answer') {
+      return [{ promptId: currentPrompt.id, variantId: null, scores: { text: scores[currentPrompt.id]?.text } }]
     }
     // audio
     return (currentPrompt.audio_variants || []).map((variant: any) => ({
@@ -149,16 +157,21 @@ export function SurveyLayout({
         </div>
 
         {/* Prompt Context / Block Content */}
-        <Card className="border-t-4 border-t-blue-600 shadow-md">
-          <CardContent className="p-6 sm:p-8">
-            <h2 className="text-sm font-semibold text-blue-600 uppercase tracking-wider mb-2">
-              {blockType === 'audio' ? 'Prompt Context' : blockType === 'single_choice' ? 'Question' : 'Information'}
-            </h2>
-            <p className="text-xl sm:text-2xl text-gray-900 font-medium leading-relaxed whitespace-pre-wrap">
-              {currentPrompt.text}
-            </p>
-          </CardContent>
-        </Card>
+        <div className={blockType === 'audio' ? "sticky top-4 z-10" : ""}>
+          <Card className="border-t-4 border-t-blue-600 shadow-md">
+            <CardContent className="p-6 sm:p-8">
+              <h2 className="text-sm font-semibold text-blue-600 uppercase tracking-wider mb-2">
+                {blockType === 'audio' ? 'Prompt Context' : blockType === 'single_choice' || blockType === 'short_answer' ? 'Question' : 'Information'}
+                {blockType === 'short_answer' && currentPrompt.options?.[0] === 'optional' && (
+                  <span className="text-gray-400 ml-2 normal-case font-normal">(Optional)</span>
+                )}
+              </h2>
+              <p className="text-xl sm:text-2xl text-gray-900 font-medium leading-relaxed whitespace-pre-wrap">
+                {currentPrompt.text}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Single Choice Block UI */}
         {blockType === 'single_choice' && currentPrompt.options && (
@@ -181,6 +194,23 @@ export function SurveyLayout({
                   </div>
                 ))}
               </RadioGroup>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Short Answer Block UI */}
+        {blockType === 'short_answer' && (
+          <Card className="shadow-sm">
+            <CardContent className="p-6">
+              <Textarea
+                placeholder="Type your answer here..."
+                value={scores[currentPrompt.id]?.text || ""}
+                onChange={(e) => setScores(prev => ({
+                  ...prev,
+                  [currentPrompt.id]: { text: e.target.value }
+                }))}
+                className="min-h-[120px] text-base"
+              />
             </CardContent>
           </Card>
         )}
