@@ -43,6 +43,10 @@ export function SurveyLayout({
   const [submitting, setSubmitting] = useState(false)
 
   useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }, [currentPromptIndex])
+
+  useEffect(() => {
     setSessionId(Math.random().toString(36).substring(2, 15))
   }, [])
 
@@ -105,7 +109,6 @@ export function SurveyLayout({
     if (!isLastPrompt) {
       // Just advance — nothing written to DB yet
       setCurrentPromptIndex(currentPromptIndex + 1)
-      window.scrollTo({ top: 0, behavior: 'smooth' })
       return
     }
 
