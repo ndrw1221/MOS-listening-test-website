@@ -49,18 +49,51 @@ export function ResultsDashboard({ projectId, criteriaList }: { projectId: strin
   const handleExportCSV = () => {
     if (responses.length === 0) return
 
-    const headers = ['Timestamp', 'Session ID', 'Questionnaire ID', 'Prompt', 'Model Variant', ...criteriaList]
+    // Columns: Timestamp, Session ID, Questionnaire ID, Block Type, Prompt, Model Variant,
+    //          Answer (single_choice / short_answer), then one column per audio criteria
+    const headers = [
+      'Timestamp',
+      'Session ID',
+      'Questionnaire ID',
+      'Block Type',
+      'Prompt',
+      'Model Variant',
+      'Answer',
+      ...criteriaList,
+    ]
     const csvRows = [headers.join(',')]
 
+    const escape = (val: string) => `"${val.replace(/"/g, '""')}"`
+
     responses.forEach(r => {
+      const scores = r.criteria_scores || {}
+
+      // Detect block type from what's stored in criteria_scores
+      let blockType = 'audio'
+      if ('choice' in scores) blockType = 'single_choice'
+      else if ('text' in scores) blockType = 'short_answer'
+      else if ('type' in scores && scores.type === 'text') blockType = 'text'
+
+      const modelVariant = r.audio_variants?.model_name || ''
+      const promptText = r.prompts?.text || ''
+
+      // "Answer" column: populated for non-audio blocks
+      let answer = ''
+      if (blockType === 'single_choice') answer = scores.choice ?? ''
+      else if (blockType === 'short_answer') answer = scores.text ?? ''
+
       const row = [
         new Date(r.created_at).toISOString(),
         r.session_id,
         r.questionnaire_id,
-        `"${(r.prompts?.text || '').replace(/"/g, '""')}"`,
-        `"${(r.audio_variants?.model_name || '').replace(/"/g, '""')}"`
+        blockType,
+        escape(promptText),
+        escape(modelVariant),
+        escape(String(answer)),
+        // criteria columns — only meaningful for audio blocks
+        ...criteriaList.map(crit => blockType === 'audio' ? (scores[crit] ?? '') : ''),
       ]
-      criteriaList.forEach(crit => { row.push(r.criteria_scores?.[crit] || '') })
+
       csvRows.push(row.join(','))
     })
 
