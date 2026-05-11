@@ -122,18 +122,39 @@ export async function createAudioVariant(promptId: string, modelName: string, fi
 
 export async function getProjectResponses(projectId: string) {
   const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('responses')
-    .select(`
-      *,
-      questionnaires!inner(project_id),
-      prompts (text),
-      audio_variants (model_name)
-    `)
-    .eq('questionnaires.project_id', projectId)
-  
-  if (error) throw new Error(error.message)
-  return data
+  let allData: any[] = []
+  let from = 0
+  const limit = 1000
+  let hasMore = true
+
+  while (hasMore) {
+    const { data, error } = await supabase
+      .from('responses')
+      .select(`
+        *,
+        questionnaires!inner(project_id),
+        prompts (text),
+        audio_variants (model_name)
+      `)
+      .eq('questionnaires.project_id', projectId)
+      .order('created_at', { ascending: true })
+      .range(from, from + limit - 1)
+    
+    if (error) throw new Error(error.message)
+    
+    if (data && data.length > 0) {
+      allData = [...allData, ...data]
+      from += data.length
+      
+      if (data.length < limit) {
+        hasMore = false
+      }
+    } else {
+      hasMore = false
+    }
+  }
+
+  return allData
 }
 
 export async function deleteProject(id: string) {
