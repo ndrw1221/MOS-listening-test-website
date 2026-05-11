@@ -55,3 +55,26 @@ export async function submitResponse(
 
   if (error) throw new Error(error.message)
 }
+
+export async function submitAllResponses(
+  sessionId: string,
+  questionnaireId: string,
+  responses: { promptId: string; variantId: string | null; scores: any }[]
+) {
+  const supabase = await createClient()
+
+  const payload = responses.map(r => ({
+    session_id: sessionId,
+    questionnaire_id: questionnaireId,
+    prompt_id: r.promptId,
+    variant_id: r.variantId,
+    criteria_scores: r.scores
+  }))
+
+  const { error } = await supabase
+    .from('responses')
+    .insert(payload)
+
+  if (error) throw new Error(error.message)
+}
+

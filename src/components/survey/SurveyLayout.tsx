@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { submitResponse } from '@/actions/survey'
+import { submitAllResponses } from '@/actions/survey'
 import { CustomAudioPlayer } from './CustomAudioPlayer'
 import { RatingScale } from './RatingScale'
 import { Button } from '@/components/ui/button'
@@ -120,12 +120,16 @@ export function SurveyLayout({
       return
     }
 
-    // ── Final submit: flush everything at once ───────────────────────────────
+    // ── Final submit: flush everything at once in a single bulk request ──
     setSubmitting(true)
     try {
-      for (const r of newResponses) {
-        await submitResponse(sessionId, questionnaireId, r.promptId, r.variantId, r.scores)
-      }
+      const formattedResponses = newResponses.map(r => ({
+        promptId: r.promptId,
+        variantId: r.variantId,
+        scores: r.scores
+      }))
+      
+      await submitAllResponses(sessionId, questionnaireId, formattedResponses)
       router.push('/survey/complete')
     } catch (err) {
       alert('Error submitting responses. Please try again.')
